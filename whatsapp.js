@@ -13,9 +13,29 @@ import { toDataURL } from 'qrcode'
 import __dirname from './dirname.js'
 import response from './response.js'
 
+import mysql from 'mysql'
+import axios from 'axios'
+
+
+
+//koneksi ke database
+const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'mdbailey'
+});
+   
+//connect ke database
+db.connect((err) =>{
+    if(err) throw err;
+    console.log('Mysql Connected...');
+});
+
 const sessions = new Map()
 const retries = new Map()
 
+  
 const sessionsDir = (sessionId = '') => {
     return join(__dirname, 'sessions', sessionId ? `${sessionId}.json` : '')
 }
@@ -84,7 +104,46 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     })
 
     wa.ev.on('messages.upsert', async (m) => {
-        const message = m.messages[0]
+        const message = m.messages[0]   
+    
+        const from = message.key.remoteJid;
+
+        const type = Object.keys(message.message)[0]
+        const body = (type === 'conversation' && message.message.conversation) ? message.message.conversation : (type == 'imageMessage') && message.message.imageMessage.caption ? message.message.imageMessage.caption : (type == 'videoMessage') && message.message.videoMessage.caption ? message.message.videoMessage.caption : (type == 'extendedTextMessage') && message.message.extendedTextMessage.text ? message.message.extendedTextMessage.text : (type == 'listResponseMessage') && message.message.listResponseMessage.selectedDisplayText ? message.message.listResponseMessage.selectedDisplayText : (type == 'listMessage') && message.message.listMessage.description ? message.message.listMessage.description : (type == 'listResponseMessage') && message.message.listResponseMessage.singleSelectReply.selectedRowId ? message.message.listResponseMessage.singleSelectReply.selectedRowId : (type == 'listResponseMessage') && message.message.listResponseMessage.title ? message.message.listResponseMessage.title : (type == 'buttonsResponseMessage') && message.message.buttonsResponseMessage.selectedButtonId ? message.message.buttonsResponseMessage.selectedButtonId : (type == 'buttonsMessage') && message.message.buttonsMessage.contentText ? message.message.buttonsMessage.contentText : ''
+        console.log(body)
+
+        let pushname = m.pushName        
+        if (from == 'status@broadcast') return
+        db.query(`SELECT * FROM device WHERE nomor = "${sessionId}"`, async (err, res) => {
+            if (err) return;
+            if (res.length === 0) return;
+            const webhook = res[0].url_webhook;
+            const respond = await sendHook(webhook, { from: from, message: body, pushname: pushname });
+            //console.log(res);
+
+        })    
+        
+
+        async function sendHook(url, data) {
+            var result = {
+                mode: 'Tidak ada webhook untuk keyword tsb'
+            };
+            await axios.post(url, data).then(res => {
+                if (res.data != null) result = res.data
+            }).catch(err => {
+                console.log(err)
+            })
+        
+            return result;
+        } 
+
+
+
+
+
+
+
+  //
 
         if (!message.key.fromMe && m.type === 'notify') {
             await delay(1000)
@@ -96,6 +155,7 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
             }
         }
     })
+            
 
     wa.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
@@ -143,7 +203,11 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
             }
         }
     })
+
 }
+
+
+
 
 /**
  * @returns {(import('@adiwajshing/baileys').AnyWASocket|null)}
@@ -267,6 +331,9 @@ const init = () => {
         }
     })
 }
+
+
+
 
 export {
     isSessionExists,
